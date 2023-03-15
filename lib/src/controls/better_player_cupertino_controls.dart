@@ -102,6 +102,7 @@ class _BetterPlayerCupertinoControlsState
         barHeight,
       ),
     ]);
+    print('ios');
     return GestureDetector(
       onTap: () {
         if (BetterPlayerMultipleGestureDetector.of(context) != null) {

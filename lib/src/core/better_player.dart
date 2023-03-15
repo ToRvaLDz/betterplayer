@@ -62,6 +62,7 @@ class _BetterPlayerState extends State<BetterPlayer>
 
   @override
   void initState() {
+
     super.initState();
     WidgetsBinding.instance.addObserver(this);
   }
@@ -261,8 +262,9 @@ class _BetterPlayerState extends State<BetterPlayer>
         _betterPlayerConfiguration.deviceOrientationsAfterFullScreen);
   }
 
+
   Widget _buildPlayer() {
-    return VisibilityDetector(
+    return  VisibilityDetector(
       key: Key("${widget.controller.hashCode}_key"),
       onVisibilityChanged: (VisibilityInfo info) =>
           widget.controller.onPlayerVisibilityChanged(info.visibleFraction),

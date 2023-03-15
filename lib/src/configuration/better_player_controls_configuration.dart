@@ -9,6 +9,10 @@ class BetterPlayerControlsConfiguration {
   ///Color of the control bars
   final Color controlBarColor;
 
+  final String title;
+  final String subTitle;
+  final String poster;
+
   ///Color of texts
   final Color textColor;
 
@@ -162,11 +166,14 @@ class BetterPlayerControlsConfiguration {
   final Color overflowModalTextColor;
 
   const BetterPlayerControlsConfiguration({
+    this.poster = '',
+    this.title = '',
+    this.subTitle = '',
     this.controlBarColor = Colors.black87,
     this.textColor = Colors.white,
     this.iconsColor = Colors.white,
-    this.playIcon = Icons.play_arrow_outlined,
-    this.pauseIcon = Icons.pause_outlined,
+    this.playIcon = Icons.play_arrow,
+    this.pauseIcon = Icons.pause,
     this.muteIcon = Icons.volume_up_outlined,
     this.unMuteIcon = Icons.volume_off_outlined,
     this.fullscreenEnableIcon = Icons.fullscreen_outlined,

@@ -742,6 +742,7 @@ class BetterPlayerController {
     _postEvent(isVisible
         ? BetterPlayerEvent(BetterPlayerEventType.controlsVisible)
         : BetterPlayerEvent(BetterPlayerEventType.controlsHiddenEnd));
+    _controlsVisibilityStreamController.add(isVisible);
   }
 
   ///Send player event. Shouldn't be used manually.
