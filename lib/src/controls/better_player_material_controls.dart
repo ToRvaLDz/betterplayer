@@ -148,19 +148,20 @@ class _BetterPlayerMaterialControlsState
                     defaultSkipRR = 10;
                     break;
                   case 10:
+                    defaultSkipRR = 20;
+                    break;
+                  case 20:
                     defaultSkipRR = 30;
                     break;
                   case 30:
                     defaultSkipRR = 60;
                     break;
-                  case 60:
-                    defaultSkipRR = 180;
-                    break;
                   default:
                     defaultSkipRR = 300;
                 }
                 final beginning = const Duration().inMilliseconds;
-                final pos = latestValue!.position!.inMilliseconds;
+                int pos = latestValue!.position.inMilliseconds;
+                if(Duration(milliseconds: pos) > skipPos) pos = skipPos.inMilliseconds;
                 skip = Duration(seconds: skip + defaultSkipRR).inMilliseconds;
                 final to = max(pos - skip, beginning);
                 skipPos = Duration(milliseconds: to);
@@ -194,19 +195,20 @@ class _BetterPlayerMaterialControlsState
                     defaultSkipFF = 10;
                     break;
                   case 10:
+                    defaultSkipFF = 20;
+                    break;
+                  case 20:
                     defaultSkipFF = 30;
                     break;
                   case 30:
                     defaultSkipFF = 60;
                     break;
-                  case 60:
-                    defaultSkipFF = 180;
-                    break;
                   default:
                     defaultSkipFF = 300;
                 }
                 final end = latestValue!.duration!.inMilliseconds;
-                final pos = latestValue!.position!.inMilliseconds;
+                int pos = latestValue!.position.inMilliseconds;
+                if(Duration(milliseconds: pos) < skipPos) pos = skipPos.inMilliseconds;
                 skip = Duration(seconds: skip + defaultSkipFF).inMilliseconds;
                 final to = min(pos + skip, end);
                 skipPos = Duration(milliseconds: to);
