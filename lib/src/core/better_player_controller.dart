@@ -1180,10 +1180,15 @@ class BetterPlayerController {
   }
 
   ///Retry data source if playback failed.
-  Future retryDataSource() async {
+  Future retryDataSource({Duration? pos = null}) async {
     await _setupDataSource(_betterPlayerDataSource!);
-    if (_videoPlayerValueOnError != null) {
-      final position = _videoPlayerValueOnError!.position;
+    if (_videoPlayerValueOnError != null || pos != null) {
+      Duration position;
+      if(pos != null) {
+        position = pos;
+      }else{
+        position = _videoPlayerValueOnError!.position;
+      }
       await seekTo(position);
       await play();
       _videoPlayerValueOnError = null;

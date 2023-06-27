@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:io';
 import 'package:better_player/src/configuration/better_player_controls_configuration.dart';
 import 'package:better_player/src/controls/better_player_clickable_widget.dart';
 import 'package:better_player/src/controls/better_player_controls_state.dart';
@@ -9,6 +9,7 @@ import 'package:better_player/src/controls/better_player_progress_colors.dart';
 import 'package:better_player/src/core/better_player_controller.dart';
 import 'package:better_player/src/core/better_player_utils.dart';
 import 'package:better_player/src/video_player/video_player.dart';
+import 'package:text_scroll/text_scroll.dart';
 
 // Flutter imports:
 import 'package:flutter/material.dart';
@@ -42,27 +43,21 @@ class _BetterPlayerMaterialControlsState
   double? _latestVolume;
   Timer? _hideTimer;
   Timer? _initTimer;
-  Timer? _debounce;
 
   Timer? _showAfterExpandCollapseTimer;
   bool _displayTapped = false;
-  bool _isSkipping = false;
+  int errorCounter = 0;
   bool _wasLoading = false;
 
   VideoPlayerController? _controller;
   BetterPlayerController? _betterPlayerController;
   StreamSubscription? _controlsVisibilityStreamSubscription;
-  int skip = 0;
-  Duration skipPos = Duration(milliseconds: 0);
+
   final nodeMid = FocusScopeNode(debugLabel: 'nodeMid');
   final focusPlayButton = FocusNode();
   final focusSkipButton = FocusNode();
   final focusForwardButton = FocusNode();
   FocusNode? lastFocus;
-
-  int defaultSkipFF = 0;
-  int defaultSkipRR = 0;
-  String skipSide = '';
 
   BetterPlayerControlsConfiguration get _controlsConfiguration =>
       widget.controlsConfiguration;
@@ -82,21 +77,29 @@ class _BetterPlayerMaterialControlsState
     return buildLTRDirectionality(_buildMainWidget());
   }
 
-  formatDuration(Duration d) =>
-      d
-          .toString()
-          .split('.')
-          .first
-          .padLeft(8, "0");
+  String formatDuration(Duration d) =>
+      d.toString().split('.').first.padLeft(8, "0");
 
   ///Builds main widget of the controls.
   Widget _buildMainWidget() {
     _wasLoading = isLoading(_latestValue);
     if (_latestValue?.hasError == true) {
-      return Container(
-        color: Colors.black,
-        child: _buildErrorWidget(),
-      );
+      if (errorCounter < 3) {
+        sleep(Duration(seconds: errorCounter));
+        betterPlayerController?.retryDataSource();
+        setState(() {
+          errorCounter += 1;
+        });
+        return _buildLoadingWidget();
+      } else {
+        setState(() {
+          errorCounter = 0;
+        });
+        return Container(
+          color: Colors.black,
+          child: _buildErrorWidget(),
+        );
+      }
     }
 
     return GestureDetector(
@@ -132,7 +135,7 @@ class _BetterPlayerMaterialControlsState
                   (event.logicalKey == LogicalKeyboardKey.select ||
                       event.logicalKey == LogicalKeyboardKey.enter)) {
                 controlsNotVisible
-                    ? cancelAndRestartTimer()
+                    ? changePlayerControlsNotVisible(false)
                     : changePlayerControlsNotVisible(true);
                 return KeyEventResult.handled;
               } else if (event.runtimeType.toString() == "RawKeyUpEvent" &&
@@ -143,96 +146,12 @@ class _BetterPlayerMaterialControlsState
               } else if (event.runtimeType.toString() == "RawKeyUpEvent" &&
                   (event.logicalKey == LogicalKeyboardKey.arrowLeft) &&
                   controlsNotVisible) {
-                switch (defaultSkipRR) {
-                  case 0:
-                    defaultSkipRR = 10;
-                    break;
-                  case 10:
-                    defaultSkipRR = 20;
-                    break;
-                  case 20:
-                    defaultSkipRR = 30;
-                    break;
-                  case 30:
-                    defaultSkipRR = 60;
-                    break;
-                  default:
-                    defaultSkipRR = 300;
-                }
-                final beginning = const Duration().inMilliseconds;
-                int pos = latestValue!.position.inMilliseconds;
-                if(Duration(milliseconds: pos) > skipPos) pos = skipPos.inMilliseconds;
-                skip = Duration(seconds: skip + defaultSkipRR).inMilliseconds;
-                final to = max(pos - skip, beginning);
-                skipPos = Duration(milliseconds: to);
-                setState(() {
-                  skipSide = 'RR';
-                  defaultSkipRR;
-                  skip = Duration(milliseconds: skip).inSeconds;
-                  skipPos;
-                  _isSkipping = true;
-                });
-                if (_debounce?.isActive ?? false) _debounce?.cancel();
-                _debounce = Timer(Duration(milliseconds: 1000), () {
-                  betterPlayerController!
-                      .seekTo(skipPos);
-                  setState(() {
-                    _isSkipping = false;
-                  });
-                  setState(() {
-                    skipSide = '';
-                    skip = 0;
-                    skipPos = Duration(milliseconds: 0);
-                    defaultSkipRR = 0;
-                  });
-                });
+                skipBack();
                 return KeyEventResult.handled;
               } else if (event.runtimeType.toString() == "RawKeyUpEvent" &&
                   (event.logicalKey == LogicalKeyboardKey.arrowRight) &&
                   controlsNotVisible) {
-                switch (defaultSkipFF) {
-                  case 0:
-                    defaultSkipFF = 10;
-                    break;
-                  case 10:
-                    defaultSkipFF = 20;
-                    break;
-                  case 20:
-                    defaultSkipFF = 30;
-                    break;
-                  case 30:
-                    defaultSkipFF = 60;
-                    break;
-                  default:
-                    defaultSkipFF = 300;
-                }
-                final end = latestValue!.duration!.inMilliseconds;
-                int pos = latestValue!.position.inMilliseconds;
-                if(Duration(milliseconds: pos) < skipPos) pos = skipPos.inMilliseconds;
-                skip = Duration(seconds: skip + defaultSkipFF).inMilliseconds;
-                final to = min(pos + skip, end);
-                skipPos = Duration(milliseconds: to);
-                setState(() {
-                  skipSide = 'FF';
-                  defaultSkipFF;
-                  skip = Duration(milliseconds: skip).inSeconds;
-                  skipPos;
-                  _isSkipping = true;
-                });
-                if (_debounce?.isActive ?? false) _debounce?.cancel();
-                _debounce = Timer(Duration(milliseconds: 1000), () {
-                  betterPlayerController!
-                      .seekTo(skipPos);
-                  setState(() {
-                    _isSkipping = false;
-                  });
-                  setState(() {
-                    skipSide = '';
-                    skip = 0;
-                    skipPos = Duration(milliseconds: 0);
-                    defaultSkipFF = 0;
-                  });
-                });
+                skipForward();
                 return KeyEventResult.handled;
               }
               return KeyEventResult.ignored;
@@ -240,8 +159,7 @@ class _BetterPlayerMaterialControlsState
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (_wasLoading)
-                  Center(child: _buildLoadingWidget()),
+                if (_wasLoading) Center(child: _buildLoadingWidget()),
                 /* else
                   _buildHitArea(),*/
                 Positioned(
@@ -273,7 +191,8 @@ class _BetterPlayerMaterialControlsState
 
   void _dispose() {
     _controller?.removeListener(_updateState);
-    _debounce?.cancel();
+    debounce?.cancel();
+    print('Cancello HIDE TIMER');
     _hideTimer?.cancel();
     _initTimer?.cancel();
     _showAfterExpandCollapseTimer?.cancel();
@@ -319,15 +238,28 @@ class _BetterPlayerMaterialControlsState
               style: textStyle,
             ),
             if (_controlsConfiguration.enableRetry)
-              TextButton(
-                onPressed: () {
-                  _betterPlayerController!.retryDataSource();
-                },
-                child: Text(
-                  _betterPlayerController!.translations.generalRetry,
-                  style: textStyle.copyWith(fontWeight: FontWeight.bold),
-                ),
-              )
+              Focus(
+                  autofocus: true,
+                  onKey: (FocusNode node, RawKeyEvent event) {
+                    if (controlsNotVisible == false &&
+                        event.runtimeType.toString() == "RawKeyDownEvent" &&
+                        (event.logicalKey == LogicalKeyboardKey.select ||
+                            event.logicalKey == LogicalKeyboardKey.enter)) {
+                      _betterPlayerController!.retryDataSource();
+                      return KeyEventResult.handled;
+                    }
+
+                    return KeyEventResult.ignored;
+                  },
+                  child: TextButton(
+                    onPressed: () {
+                      _betterPlayerController!.retryDataSource();
+                    },
+                    child: Text(
+                      _betterPlayerController!.translations.generalRetry,
+                      style: textStyle.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ))
           ],
         ),
       );
@@ -336,42 +268,47 @@ class _BetterPlayerMaterialControlsState
 
   Widget _buildSkipTime() {
     return Container(
-        child: Center(child: AnimatedOpacity(
-          opacity: _isSkipping ? 1.0 : 0.0,
-          duration: _controlsConfiguration.controlsHideTime,
-          child: Container(
-            color: Colors.black12,
-            //    height: _controlsConfiguration.controlBarHeight,
-            width: double.infinity,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                skipSide == 'FF' ?
-                Text(defaultSkipFF >= 60 ? '+${(defaultSkipFF / 60)
-                    .toString()
-                    .split('.')
-                    .first}min' : '+${defaultSkipFF.toString()}sec',
-                  style: TextStyle(decoration: TextDecoration.none,
-                      color: Colors.white,
-                      fontSize: 30),) :
-                skipSide == 'RR' ? Text(
-                  defaultSkipRR >= 60 ? '-${(defaultSkipRR / 60)
-                      .toString()
-                      .split('.')
-                      .first}min' : '-${defaultSkipRR.toString()}sec',
-                  style: TextStyle(decoration: TextDecoration.none,
-                      color: Colors.white,
-                      fontSize: 30),) : Container(),
-                skipSide == 'FF' || skipSide == 'RR' ? Text(
-                  formatDuration(skipPos), style: TextStyle(
-                    decoration: TextDecoration.none,
-                    color: Colors.white,
-                    fontSize: 20),) : Container()
-              ],
-            ),
-          ),
-        )
-        ));
+        child: Center(
+            child: Container(
+              color: Colors.black12,
+              //    height: _controlsConfiguration.controlBarHeight,
+              width: double.infinity,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  skipSide == 'FF'
+                      ? Text(
+                          defaultSkipFF >= 60
+                              ? '+${(defaultSkipFF / 60).toString().split('.').first}min'
+                              : '+${defaultSkipFF.toString()}sec',
+                          style: TextStyle(
+                              decoration: TextDecoration.none,
+                              color: Colors.white,
+                              fontSize: 30),
+                        )
+                      : skipSide == 'RR'
+                          ? Text(
+                              defaultSkipRR >= 60
+                                  ? '-${(defaultSkipRR / 60).toString().split('.').first}min'
+                                  : '-${defaultSkipRR.toString()}sec',
+                              style: TextStyle(
+                                  decoration: TextDecoration.none,
+                                  color: Colors.white,
+                                  fontSize: 30),
+                            )
+                          : Container(),
+                  skipSide == 'FF' || skipSide == 'RR'
+                      ? Text(
+                          formatDuration(Duration(seconds: skipPos)),
+                          style: TextStyle(
+                              decoration: TextDecoration.none,
+                              color: Colors.white,
+                              fontSize: 20),
+                        )
+                      : Container()
+                ],
+              ),
+            )));
   }
 
   Widget _buildTopBar() {
@@ -382,25 +319,26 @@ class _BetterPlayerMaterialControlsState
     return Container(
       child: (_controlsConfiguration.enableOverflowMenu)
           ? AnimatedOpacity(
-        opacity: controlsNotVisible ? 0.0 : 1.0,
-        duration: _controlsConfiguration.controlsHideTime,
-        onEnd: _onPlayerHide,
-        child: Container(
-          height: _controlsConfiguration.controlBarHeight,
-          width: double.infinity,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (_controlsConfiguration.enablePip)
-                _buildPipButtonWrapperWidget(
-                    controlsNotVisible, _onPlayerHide)
-              else
-                const SizedBox(),
-              _buildMoreButton(),
-            ],
-          ),
-        ),
-      )
+              curve: Curves.elasticInOut,
+              opacity: controlsNotVisible ? 0.0 : 1.0,
+              duration: _controlsConfiguration.controlsHideTime,
+              onEnd: _onPlayerHide,
+              child: Container(
+                height: _controlsConfiguration.controlBarHeight,
+                width: double.infinity,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (_controlsConfiguration.enablePip)
+                      _buildPipButtonWrapperWidget(
+                          controlsNotVisible, _onPlayerHide)
+                    else
+                      const SizedBox(),
+                    _buildMoreButton(),
+                  ],
+                ),
+              ),
+            )
           : const SizedBox(),
     );
   }
@@ -429,8 +367,8 @@ class _BetterPlayerMaterialControlsState
     );
   }
 
-  Widget _buildPipButtonWrapperWidget(bool hideStuff,
-      void Function() onPlayerHide) {
+  Widget _buildPipButtonWrapperWidget(
+      bool hideStuff, void Function() onPlayerHide) {
     return FutureBuilder<bool>(
       future: betterPlayerController!.isPictureInPictureSupported(),
       builder: (context, snapshot) {
@@ -438,6 +376,7 @@ class _BetterPlayerMaterialControlsState
         if (isPipSupported &&
             _betterPlayerController!.betterPlayerGlobalKey != null) {
           return AnimatedOpacity(
+            curve: Curves.elasticInOut,
             opacity: hideStuff ? 0.0 : 1.0,
             duration: betterPlayerControlsConfiguration.controlsHideTime,
             onEnd: onPlayerHide,
@@ -484,75 +423,98 @@ class _BetterPlayerMaterialControlsState
     if (!betterPlayerController!.controlsEnabled) {
       return const SizedBox();
     }
+    final position =
+        _latestValue != null ? _latestValue!.position : Duration.zero;
+    final duration = _latestValue != null && _latestValue!.duration != null
+        ? _latestValue!.duration!
+        : Duration.zero;
     return AnimatedOpacity(
-      opacity: controlsNotVisible && !_isSkipping ? 0.0 : 1.0,
+      curve: Curves.elasticInOut,
+      opacity: controlsNotVisible && !isSkipping ? 0.0 : 1.0,
       duration: _controlsConfiguration.controlsHideTime,
-      onEnd: _onPlayerHide,
+      //onEnd: _onPlayerHide,
       child: Container(
-        height: _controlsConfiguration.controlBarHeight + 40.0,
-        color: Styles.colorBackgroundFull,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(flex: 5, child:
-
-                Padding(
-                    padding: const EdgeInsets.all(5),
-                    child:
-                    Container(
-                      alignment: Alignment.centerLeft,
-                      height: _controlsConfiguration.controlBarHeight + 30.0,
-                      //width: 200,
-                      child: Image.network(widget.controlsConfiguration.poster, fit: BoxFit.fitHeight,),
-                    )),
-              ),
-            Expanded(flex: 10,
-              child: Padding(
-                    padding: const EdgeInsets.fromLTRB(0,5,0,5),
-                    child:
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(widget.controlsConfiguration.title,style: Styles.vodSubTitle,),
-                          Text(widget.controlsConfiguration.subTitle,style: Styles.vodSubTitle,),
-                      ],)
-              )
-            ),
-
-            Expanded(
-              //flex: 40,
-              child: Row(
+          height: _controlsConfiguration.controlBarHeight + 44.0,
+          color: Styles.colorBackgroundPlayer,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildProgressBar(),
+              Row(
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
-                  /*  if (_controlsConfiguration.enablePlayPause)
-                    _buildPlayPause(_controller!)
-                  else*/
-                  /*  const SizedBox(width: 10,),
-                  if (_betterPlayerController!.isLiveStream())
-                    _buildLiveWidget()
-                  else
-                    _controlsConfiguration.enableProgressText
-                        ? Expanded(child: _buildPosition())
-                        : const SizedBox(),*/
-                  Expanded(/*flex: 80,*/ child: _buildHitArea()),
-                  /* if (_controlsConfiguration.enableMute)
-                    _buildMuteButton(_controller)
-                  else
-                    const SizedBox(),*/
-                  /* if (_controlsConfiguration.enableFullscreen)
-                    _buildExpandButton()
-                  else
-                    const SizedBox(),*/
+                  Flexible(
+                      flex: 1,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(5, 7, 5, 5),
+                          child: Container(
+                            alignment: Alignment.centerLeft,
+                            height:
+                                _controlsConfiguration.controlBarHeight + 32.0,
+                            //width: 200,
+                            child: Image.network(
+                              widget.controlsConfiguration.poster,
+                              fit: BoxFit.fitWidth,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              TextScroll(
+                                widget.controlsConfiguration.title,
+                                selectable: false,
+                                velocity: const Velocity(
+                                    pixelsPerSecond: Offset(30, 0)),
+                                //delayBefore: const Duration(milliseconds: 3000),
+                                pauseBetween:
+                                    const Duration(milliseconds: 4000),
+                                //numberOfReps: 5,
+                                style: Styles.vodPlayerTitle,
+                              ),
+                              TextScroll(
+                                widget.controlsConfiguration.subTitle,
+                                selectable: false,
+                                velocity: const Velocity(
+                                    pixelsPerSecond: Offset(30, 0)),
+                                //delayBefore: const Duration(milliseconds: 3000),
+                                pauseBetween:
+                                    const Duration(milliseconds: 4000),
+                                //numberOfReps: 5,
+                                style: Styles.vodSubTitle,
+                              ),
+                              Text(
+                                BetterPlayerUtils.formatDuration(position) +
+                                    " / " +
+                                    BetterPlayerUtils.formatDuration(
+                                        duration),
+                                style: Styles.liveTime,
+                              ),
+                            ],
+                          ),
+                        )
+                      ])),
+                  Flexible(
+                      flex: 1,
+                      //flex: 40,
+                      child: _buildHitArea()),
+                  Flexible(
+                    flex: 1,
+                    child: Container(),
+                  ),
                 ],
               ),
-            ),
-            _buildProgressBar()
-          ],
-        ),
-      ),
+            ],
+          )),
     );
   }
 
@@ -577,6 +539,7 @@ class _BetterPlayerMaterialControlsState
             hasFocus: hasFocus,
             onTap: _onExpandCollapse,
             child: AnimatedOpacity(
+              curve: Curves.elasticInOut,
               opacity: controlsNotVisible ? 0.0 : 1.0,
               duration: _controlsConfiguration.controlsHideTime,
               child: Container(
@@ -610,11 +573,7 @@ class _BetterPlayerMaterialControlsState
       },
       child: Container(
         child: Center(
-          child: AnimatedOpacity(
-            opacity: controlsNotVisible ? 0.0 : 1.0,
-            duration: _controlsConfiguration.controlsHideTime,
-            child: _buildMiddleRow(),
-          ),
+          child: _buildMiddleRow(),
         ),
       ),
     );
@@ -628,32 +587,27 @@ class _BetterPlayerMaterialControlsState
       child: _betterPlayerController?.isLiveStream() == true
           ? const SizedBox()
           : Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          if (_controlsConfiguration.enableSkips)
-            Expanded(
-              child: _buildSkipButton(),
-            )
-          else
-            const SizedBox(),
-          Expanded(
-            child: _buildReplayButton(_controller!),
-          ),
-          if (_controlsConfiguration.enableSkips)
-            Expanded(
-              child: _buildForwardButton(),
-            )
-          else
-            const SizedBox(),
-        ],
-      ),
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_controlsConfiguration.enableSkips)
+                  _buildSkipButton()
+                else
+                  const SizedBox(),
+                _buildReplayButton(_controller!),
+                if (_controlsConfiguration.enableSkips)
+                  _buildForwardButton()
+                else
+                  const SizedBox(),
+              ],
+            ),
     );
   }
 
-  Widget _buildHitAreaClickableButton({Widget? icon,
-    required void Function() onClicked,
-    FocusNode? node,
-    bool autoFocus = false}) {
+  Widget _buildHitAreaClickableButton(
+      {Widget? icon,
+      required void Function() onClicked,
+      FocusNode? node,
+      bool autoFocus = false}) {
     node = node ?? FocusNode();
     return Visibility(
       visible: controlsNotVisible == false,
@@ -685,7 +639,9 @@ class _BetterPlayerMaterialControlsState
               child: Align(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.transparent,
+                    color: hasFocus
+                        ? Color.fromRGBO(229, 160, 13, 1)
+                        : Colors.transparent,
                     borderRadius: BorderRadius.circular(48),
                   ),
                   child: Padding(
@@ -697,7 +653,6 @@ class _BetterPlayerMaterialControlsState
                   /*child: Stack(
                       children: [icon!],
                     ),*/
-
                 ),
               ),
             ),
@@ -740,17 +695,17 @@ class _BetterPlayerMaterialControlsState
       node: focusPlayButton,
       icon: isFinished
           ? Icon(
-        Icons.replay,
-        size: 42,
-        color: _controlsConfiguration.iconsColor,
-      )
+              Icons.replay,
+              size: 24,
+              color: _controlsConfiguration.iconsColor,
+            )
           : Icon(
-        controller.value.isPlaying
-            ? _controlsConfiguration.pauseIcon
-            : _controlsConfiguration.playIcon,
-        size: 42,
-        color: _controlsConfiguration.iconsColor,
-      ),
+              controller.value.isPlaying
+                  ? _controlsConfiguration.pauseIcon
+                  : _controlsConfiguration.playIcon,
+              size: 24,
+              color: _controlsConfiguration.iconsColor,
+            ),
       onClicked: () {
         if (isFinished) {
           if (_latestValue != null && _latestValue!.isPlaying) {
@@ -798,8 +753,7 @@ class _BetterPlayerMaterialControlsState
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Text(
-                        "${_betterPlayerController!.translations
-                            .controlsNextVideoIn} $time...",
+                        "${_betterPlayerController!.translations.controlsNextVideoIn} $time...",
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
@@ -815,7 +769,9 @@ class _BetterPlayerMaterialControlsState
     );
   }
 
-  Widget _buildMuteButton(VideoPlayerController? controller,) {
+  Widget _buildMuteButton(
+    VideoPlayerController? controller,
+  ) {
     return Focus(
       child: Builder(builder: (context) {
         final FocusNode focusNode = Focus.of(context);
@@ -831,19 +787,15 @@ class _BetterPlayerMaterialControlsState
               _betterPlayerController!.setVolume(0.0);
             }
           },
-          child: AnimatedOpacity(
-            opacity: controlsNotVisible ? 0.0 : 1.0,
-            duration: _controlsConfiguration.controlsHideTime,
-            child: ClipRect(
-              child: Container(
-                height: _controlsConfiguration.controlBarHeight,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(
-                  (_latestValue != null && _latestValue!.volume > 0)
-                      ? _controlsConfiguration.muteIcon
-                      : _controlsConfiguration.unMuteIcon,
-                  color: _controlsConfiguration.iconsColor,
-                ),
+          child: ClipRect(
+            child: Container(
+              height: _controlsConfiguration.controlBarHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Icon(
+                (_latestValue != null && _latestValue!.volume > 0)
+                    ? _controlsConfiguration.muteIcon
+                    : _controlsConfiguration.unMuteIcon,
+                color: _controlsConfiguration.iconsColor,
               ),
             ),
           ),
@@ -879,7 +831,7 @@ class _BetterPlayerMaterialControlsState
 
   Widget _buildPosition() {
     final position =
-    _latestValue != null ? _latestValue!.position : Duration.zero;
+        _latestValue != null ? _latestValue!.position : Duration.zero;
     final duration = _latestValue != null && _latestValue!.duration != null
         ? _latestValue!.duration!
         : Duration.zero;
@@ -912,11 +864,11 @@ class _BetterPlayerMaterialControlsState
 
   @override
   void cancelAndRestartTimer() {
-    print('cancel restart');
+    print('cancel restart timer');
+    //changePlayerControlsNotVisible(false);
     _hideTimer?.cancel();
     _startHideTimer();
 
-    changePlayerControlsNotVisible(false);
     _displayTapped = true;
   }
 
@@ -938,11 +890,11 @@ class _BetterPlayerMaterialControlsState
 
     _controlsVisibilityStreamSubscription =
         _betterPlayerController!.controlsVisibilityStream.listen((state) {
-          changePlayerControlsNotVisible(!state);
-          if (!controlsNotVisible) {
-            cancelAndRestartTimer();
-          }
-        });
+      changePlayerControlsNotVisible(!state);
+      if (!controlsNotVisible) {
+        cancelAndRestartTimer();
+      }
+    });
   }
 
   void _onExpandCollapse() {
@@ -950,10 +902,10 @@ class _BetterPlayerMaterialControlsState
     _betterPlayerController!.toggleFullScreen();
     _showAfterExpandCollapseTimer =
         Timer(_controlsConfiguration.controlsHideTime, () {
-          setState(() {
-            cancelAndRestartTimer();
-          });
-        });
+      setState(() {
+        cancelAndRestartTimer();
+      });
+    });
   }
 
   void _onPlayPause() {
@@ -964,13 +916,15 @@ class _BetterPlayerMaterialControlsState
     }
 
     if (_controller!.value.isPlaying) {
-      changePlayerControlsNotVisible(false);
+      changePlayerControlsNotVisible(true);
+      print('Cancello HIDE TIMER');
       _hideTimer?.cancel();
       _betterPlayerController!.pause();
     } else {
       cancelAndRestartTimer();
 
-      if (!_controller!.value.initialized) {} else {
+      if (!_controller!.value.initialized) {
+      } else {
         if (isFinished) {
           _betterPlayerController!.seekTo(const Duration());
         }
@@ -984,7 +938,10 @@ class _BetterPlayerMaterialControlsState
     if (_betterPlayerController!.controlsAlwaysVisible) {
       return;
     }
+    print('Start HIDE Timer');
+    _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(milliseconds: 10000), () {
+      print('Eseguo HIDE Timer');
       changePlayerControlsNotVisible(true);
       lastFocus = focusPlayButton;
     });
@@ -1009,10 +966,10 @@ class _BetterPlayerMaterialControlsState
 
   Widget _buildProgressBar() {
     return Expanded(
-      flex: 40,
+      //flex: 40,
       child: Container(
-        alignment: Alignment.bottomCenter,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        //alignment: Alignment.bottomCenter,
+        //padding: const EdgeInsets.symmetric(horizontal: 12),
         child: BetterPlayerMaterialVideoProgressBar(
           _controller,
           _betterPlayerController,
@@ -1030,14 +987,14 @@ class _BetterPlayerMaterialControlsState
               handleColor: _controlsConfiguration.progressBarHandleColor,
               bufferedColor: _controlsConfiguration.progressBarBufferedColor,
               backgroundColor:
-              _controlsConfiguration.progressBarBackgroundColor),
+                  _controlsConfiguration.progressBarBackgroundColor),
         ),
       ),
     );
   }
 
   void _onSkipHide() {
-    _isSkipping = false;
+    isSkipping = false;
   }
 
   void _onPlayerHide() {
@@ -1045,7 +1002,7 @@ class _BetterPlayerMaterialControlsState
     widget.onControlsVisibilityChanged(!controlsNotVisible);
   }
 
-  Widget? _buildLoadingWidget() {
+  Widget _buildLoadingWidget() {
     if (_controlsConfiguration.loadingWidget != null) {
       return Container(
         //color: _controlsConfiguration.controlBarColor,
@@ -1055,7 +1012,7 @@ class _BetterPlayerMaterialControlsState
 
     return CircularProgressIndicator(
       valueColor:
-      AlwaysStoppedAnimation<Color>(_controlsConfiguration.loadingColor),
+          AlwaysStoppedAnimation<Color>(_controlsConfiguration.loadingColor),
     );
   }
 }

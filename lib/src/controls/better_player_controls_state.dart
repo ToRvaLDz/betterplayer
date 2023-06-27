@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:better_player/better_player.dart';
@@ -23,6 +24,13 @@ abstract class BetterPlayerControlsState<T extends StatefulWidget>
 
   void cancelAndRestartTimer();
 
+  int defaultSkipFF = 0;
+  int defaultSkipRR = 0;
+  String skipSide = '';
+  int skipPos = 0;
+  Timer? debounce;
+  bool isSkipping = false;
+
   bool isVideoFinished(VideoPlayerValue? videoPlayerValue) {
     return videoPlayerValue?.position != null &&
         videoPlayerValue?.duration != null &&
@@ -32,7 +40,52 @@ abstract class BetterPlayerControlsState<T extends StatefulWidget>
   }
 
   void skipBack() {
-    if (latestValue != null) {
+    cancelAndRestartTimer();
+    switch (defaultSkipRR) {
+      case 0:
+        defaultSkipRR = 10;
+        break;
+      case 10:
+        defaultSkipRR = 20;
+        break;
+      case 20:
+        defaultSkipRR = 30;
+        break;
+      case 30:
+        defaultSkipRR = 60;
+        break;
+      default:
+        defaultSkipRR = 300;
+    }
+    final beginning = 0;
+    //int pos = latestValue!.position.inSeconds;
+    if (skipPos == 0)
+      skipPos = latestValue!.position.inSeconds;
+
+    skipPos = skipPos - defaultSkipRR;
+    Duration to = Duration(seconds: max(skipPos, beginning));
+
+    setState(() {
+      skipSide = 'RR';
+      defaultSkipRR;
+      skipPos = to.inSeconds;
+      isSkipping = true;
+    });
+    if (debounce?.isActive ?? false) debounce?.cancel();
+    debounce = Timer(Duration(milliseconds: 1000), () {
+      betterPlayerController!
+          .seekTo(to);
+
+      setState(() {
+        isSkipping = false;
+      });
+      setState(() {
+        skipSide = '';
+        skipPos = 0;
+        defaultSkipRR = 0;
+      });
+    });
+    /*if (latestValue != null) {
       cancelAndRestartTimer();
       final beginning = const Duration().inMilliseconds;
       final skip = (latestValue!.position -
@@ -42,11 +95,58 @@ abstract class BetterPlayerControlsState<T extends StatefulWidget>
           .inMilliseconds;
       betterPlayerController!
           .seekTo(Duration(milliseconds: max(skip, beginning)));
-    }
+    }*/
   }
 
   void skipForward() {
+    cancelAndRestartTimer();
     if (latestValue != null) {
+      switch (defaultSkipFF) {
+        case 0:
+          defaultSkipFF = 10;
+          break;
+        case 10:
+          defaultSkipFF = 20;
+          break;
+        case 20:
+          defaultSkipFF = 30;
+          break;
+        case 30:
+          defaultSkipFF = 60;
+          break;
+        default:
+          defaultSkipFF = 300;
+      }
+      final end = latestValue!.duration!.inSeconds;
+      // int pos = latestValue!.position.inSeconds;
+      if (skipPos == 0)
+        skipPos = latestValue!.position.inSeconds;
+
+      skipPos = skipPos + defaultSkipFF;
+      Duration to = Duration(seconds: min(skipPos, end));
+      setState(() {
+        skipSide = 'FF';
+        defaultSkipFF;
+        /* skip = Duration(milliseconds: skip).inSeconds;*/
+        skipPos = to.inSeconds;
+        isSkipping = true;
+      });
+      if (debounce?.isActive ?? false) debounce?.cancel();
+      debounce = Timer(Duration(milliseconds: 1000), () {
+        betterPlayerController!
+            .seekTo(to);
+        setState(() {
+          isSkipping = false;
+        });
+        setState(() {
+          skipSide = '';
+          //skip = 0;
+          skipPos = 0;
+          defaultSkipFF = 0;
+        });
+      });
+    }
+    /*if (latestValue != null) {
       cancelAndRestartTimer();
       final end = latestValue!.duration!.inMilliseconds;
       final skip = (latestValue!.position +
@@ -55,7 +155,7 @@ abstract class BetterPlayerControlsState<T extends StatefulWidget>
                       .forwardSkipTimeInMilliseconds))
           .inMilliseconds;
       betterPlayerController!.seekTo(Duration(milliseconds: min(skip, end)));
-    }
+    }*/
   }
 
   void onShowMoreClicked() {
